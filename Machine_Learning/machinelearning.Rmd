@@ -1,0 +1,149 @@
+---
+title: "datascience_machinelearning"
+author: "Kange2014"
+date: "2015/04/24"
+output: html_document
+---
+
+The purpose of this project is to predict the manner in which quantified self movement participants  did the exercise. The variabes contain data from accelerometers on the belt, forearm, arm, and dumbell.A classifer will be build by applying some machine learning algorithms. The caret package in R has several functions that attempts to streamline the model building and evaluation process.
+
+**Cleaning the Data Set**
+
+Since there are many NAs or missing values in both the training and testing set, first variables that some instances miss the correspoding data will be excluded from both training and testing set. then, it was observed that the first seven variables are not directly related with the exercise participants did. They'll also be excluded in the following model building process. After this, 19622 instances with 52 variables are used in the training process, and 20 instances also with 52 variables are used for prediction performance evaluation in the testing process.  
+
+```{r,eval=FALSE}
+library(caret)
+library(doMC)
+
+training <- read.csv("pml-training.csv")
+testing <- read.csv("pml-testing.csv")
+
+### to exclude variables containing missing values or NAs in the training and testing set
+tmp <- c()
+length <- ncol(training)
+for(i in 1:length){
+  if(anyNA(training[,i])){ tmp <- c(tmp,i)}
+  else if(anyNA(testing[,i])){tmp <- c(tmp,i)}
+}
+
+### to exclude the first 7 variables
+training <- training[,-c(1:7,tmp)]
+testing <- testing[,-c(1:7,tmp)]
+
+```
+
+**Model Training and Parameter Tuning**
+
+For the model building, random forest algorithm is applied within the caret package. And, 10 folds cross-validation with three repeated times is selected. 
+
+```{r,eval=FALSE}
+
+set.seed(32323)
+registerDoMC(cores=2)
+
+### set the train parameters
+
+fitControl <- trainControl(
+  ## 10-fold CV
+  method = "repeatedcv",
+  number = 10,
+  ## repeated 3 times
+  repeats = 3,
+  allowParallel=TRUE
+)
+
+### random forest is applied to build the machine learning model
+modFit <- train(classe~., method="rf",data=training,ntree=100,trControl=fitControl)
+modFit
+```
+```
+Random Forest 
+
+19622 samples
+   52 predictor
+    5 classes: 'A', 'B', 'C', 'D', 'E' 
+
+No pre-processing
+Resampling: Cross-Validated (10 fold, repeated 3 times) 
+
+Summary of sample sizes: 17660, 17660, 17661, 17660, 17659, 17658, ... 
+
+Resampling results across tuning parameters:
+
+  mtry  Accuracy   Kappa      Accuracy SD  Kappa SD   
+   2    0.9945979  0.9931663  0.001823529  0.002307415
+  27    0.9942583  0.9927368  0.001483100  0.001876307
+  52    0.9890263  0.9861176  0.003223437  0.004078695
+
+Accuracy was used to select the optimal model using  the largest value. The final value used for the model was mtry = 2.
+```
+
+**Estimating Out-Of-Sample Error**
+
+```{r,eval=FALSE}
+modFit$finalModel
+```
+```
+Call:
+ randomForest(x = x, y = y, ntree = 100, mtry = param$mtry) 
+               Type of random forest: classification
+                     Number of trees: 100
+No. of variables tried at each split: 2
+
+        OOB estimate of  error rate: 0.55%
+Confusion matrix:
+     A    B    C    D    E  class.error
+A 5579    0    0    0    1 0.0001792115
+B   21 3766   10    0    0 0.0081643403
+C    0   22 3393    7    0 0.0084745763
+D    0    0   40 3173    3 0.0133706468
+E    0    0    0    3 3604 0.0008317161
+```
+The expected out of sample error by the above method is 0.55%. However, 10 folds cross-validation method is also used to estimate the out-of-sample errors. That is, dividing the training set into 10 parts randomly, then based the 9 parts, building the model by random forest algorithm with the same parameters. And finally, with the built model, the remaining part is used as testing set to evaluate the performance of the model, computing the out-of-sample error, which is one minus model's accuracy.
+
+```{r,eval=FALSE}
+### 10 folds cross validation
+
+folds <- createFolds(y=training$classe,k=10,list=TRUE,returnTrain=TRUE)
+new_training <- training[folds[[1]],]
+new_testing <- training[-folds[[1]],]
+
+### random forest is again applied to build the model
+modFit <- train(classe~., method="rf",data=new_training,ntree=100,trControl=fitControl)
+pred <- predict(modFit,new_testing)
+confusionMatrix(pred,new_testing$classe)
+```
+```
+Confusion Matrix and Statistics
+
+          Reference
+Prediction   A   B   C   D   E
+         A 558   1   0   0   0
+         B   0 378   3   0   0
+         C   0   1 338   2   0
+         D   0   0   1 319   0
+         E   0   0   0   0 361
+
+Overall Statistics
+                                         
+               Accuracy : 0.9959         
+                 95% CI : (0.992, 0.9982)
+    No Information Rate : 0.2844         
+    P-Value [Acc > NIR] : < 2.2e-16      
+                                         
+                  Kappa : 0.9948         
+ Mcnemar's Test P-Value : NA             
+
+Statistics by Class:
+
+                     Class: A Class: B Class: C Class: D Class: E
+Sensitivity            1.0000   0.9947   0.9883   0.9938    1.000
+Specificity            0.9993   0.9981   0.9981   0.9994    1.000
+Pos Pred Value         0.9982   0.9921   0.9912   0.9969    1.000
+Neg Pred Value         1.0000   0.9987   0.9975   0.9988    1.000
+Prevalence             0.2844   0.1937   0.1743   0.1636    0.184
+Detection Rate         0.2844   0.1927   0.1723   0.1626    0.184
+Detection Prevalence   0.2849   0.1942   0.1738   0.1631    0.184
+Balanced Accuracy      0.9996   0.9964   0.9932   0.9966    1.000
+```
+The out-of-sample error rate is 1-0.9959 = 0.41%, which is a little smaller than one estimated by the first method. Actually, it's better to use the average out-of-sample error rate instead of this 0.41%, because of 10-folds cross-validation, which matches the first method. However, considering the computing cost of random forest algorithm in this project, only one error rate is estimated. 

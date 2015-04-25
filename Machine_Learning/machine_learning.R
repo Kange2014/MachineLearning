@@ -1,12 +1,12 @@
-library(caret)
+library(caret)
+library(doMC)
 training <- read.csv("/Users/kange2014/Coursera/Machine_Learning/pml-training.csv")
 testing <- read.csv("/Users/kange2014/Coursera/Machine_Learning/pml-testing.csv")
 
 ### 10 fold cross validation
 #k <- 10
 
-set.seed(32323)
-#folds <- creatFolds(y=$training$classe,k=10,list=TRUE,returnTrain=TRUE)
+#folds <- createFolds(y=training$classe,k=10,list=TRUE,returnTrain=TRUE)
 
 #modelFit <- train(classe ~.,data=training,method="glm")
 ### args(train) args(trainControl), for the setting of cross validation
@@ -36,28 +36,36 @@ set.seed(32323)
 # 
 # "pitch_forearm" 
 
+tmp <- c()
+length <- ncol(training)
 
-#for(i in 1:ncol(training)){
-#  if(any(training[,1]){ 
-#    training <- training[,-i]
-#    testing <- testing[,-i]
-#  }
-#}
+for(i in 1:length){
+  if(anyNA(training[,i])){ tmp <- c(tmp,i)}
+  else if(anyNA(testing[,i])){tmp <- c(tmp,i)}
+}
+
+training <- training[,-c(1:7,tmp)]
+
+testing <- testing[,-c(1:7,tmp)]
+
+set.seed(32323)
+registerDoMC(cores=2)
 
 fitControl <- trainControl(
   ## 10-fold CV
   method = "repeatedcv",
   number = 10,
-  ## repeated ten times
-  repeats = 10
+  ## repeated 3 times
+  repeats = 3,
+  allowParallel=TRUE
 )
 
-modFit <- train(classe~., method="rf",data=training[,-c(1:7)],prox=TRUE,trControl=fitControl)
+modFit <- train(classe~., method="rf",data=training,ntree=100,trControl=fitControl)
 
 fitControl <- trainControl(
   ## oob for random forest
-  method = "oob"
-)
-modFit2 <- train(classe~., method="rf",data=training[,-c(1:7)],prox=TRUE,trControl=fitControl)
+  method = "oob",allowParallel=TRUE)
 
-pred <- predict(modFit,testing[,-c(1:7)])
+modFit2 <- train(classe~., method="rf",data=training,ntree=100,trControl=fitControl)
+
+pred <- predict(modFit,testing)
